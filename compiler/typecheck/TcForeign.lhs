@@ -267,7 +267,7 @@ tcCheckFIType sig_ty arg_tys res_ty idecl@(CImport cconv safety mh (CFunction ta
   | otherwise = do              -- Normal foreign import
       checkCg checkCOrAsmOrLlvmOrInterp
       cconv' <- checkCConv cconv
-      checkCTarget target
+      when (cconv /= JavaScriptCallConv) (checkCTarget target)
       dflags <- getDynFlags
       checkForeignArgs (isFFIArgumentTy dflags safety) arg_tys
       checkForeignRes nonIOok checkSafe (isFFIImportResultTy dflags) res_ty
@@ -347,8 +347,9 @@ tcFExport d = pprPanic "tcFExport" (ppr d)
 \begin{code}
 tcCheckFEType :: Type -> ForeignExport -> TcM ForeignExport
 tcCheckFEType sig_ty (CExport (CExportStatic str cconv)) = do
-    checkCg checkCOrAsmOrLlvm
-    check (isCLabelString str) (badCName str)
+    when (cconv /= JavaScriptCallConv) $ do
+        checkCg checkCOrAsmOrLlvm
+        check (isCLabelString str) (badCName str)
     cconv' <- checkCConv cconv
     checkForeignArgs isFFIExternalTy arg_tys
     checkForeignRes nonIOok noCheckSafe isFFIExportResultTy res_ty
@@ -466,6 +467,11 @@ checkCConv StdCallConv  = do dflags <- getDynFlags
                                          return CCallConv
 checkCConv PrimCallConv = do addErrTc (text "The `prim' calling convention can only be used with `foreign import'")
                              return PrimCallConv
+checkCConv JavaScriptCallConv = do dflags <- getDynFlags
+                                   if platformArch (targetPlatform dflags) == ArchJavaScript
+                                       then return JavaScriptCallConv
+                                       else do addErrTc (text "The `javascript' calling convention is unsupported on this platform")
+                                               return JavaScriptCallConv
 \end{code}
 
 Warnings

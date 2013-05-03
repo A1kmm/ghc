@@ -155,6 +155,7 @@ import Outputable
 import Foreign.C        ( CInt(..) )
 #endif
 import {-# SOURCE #-} ErrUtils ( Severity(..), MsgDoc, mkLocMessage )
+import {-# SOURCE #-} HscTypes ( ModIface )
 
 import System.IO.Unsafe ( unsafePerformIO )
 import Data.IORef
@@ -789,7 +790,8 @@ data Settings = Settings {
   sOpt_lo                :: [String], -- LLVM: llvm optimiser
   sOpt_lc                :: [String], -- LLVM: llc static compiler
 
-  sPlatformConstants     :: PlatformConstants
+  sPlatformConstants     :: PlatformConstants,
+  sOverridePrimIface     :: Maybe ModIface
  }
 
 targetPlatform :: DynFlags -> Platform
@@ -994,7 +996,8 @@ data RtsOptsEnabled = RtsOptsNone | RtsOptsSafeOnly | RtsOptsAll
 -- this compilation.
 
 data Way
-  = WayThreaded
+  = WayCustom String
+  | WayThreaded
   | WayDebug
   | WayProf
   | WayEventLog
@@ -1020,6 +1023,7 @@ allowed_combination way = and [ x `allowedWith` y
         _ `allowedWith` WayDebug                = True
         WayDebug `allowedWith` _                = True
 
+        (WayCustom {}) `allowedWith` _          = True
         WayProf `allowedWith` WayNDP            = True
         WayThreaded `allowedWith` WayProf       = True
         WayThreaded `allowedWith` WayEventLog   = True
@@ -1029,6 +1033,7 @@ mkBuildTag :: [Way] -> String
 mkBuildTag ways = concat (intersperse "_" (map wayTag ways))
 
 wayTag :: Way -> String
+wayTag (WayCustom xs) = xs
 wayTag WayThreaded = "thr"
 wayTag WayDebug    = "debug"
 wayTag WayDyn      = "dyn"
@@ -1039,6 +1044,7 @@ wayTag WayGran     = "mg"
 wayTag WayNDP      = "ndp"
 
 wayRTSOnly :: Way -> Bool
+wayRTSOnly (WayCustom {}) = False
 wayRTSOnly WayThreaded = True
 wayRTSOnly WayDebug    = True
 wayRTSOnly WayDyn      = False
@@ -1049,6 +1055,7 @@ wayRTSOnly WayGran     = False
 wayRTSOnly WayNDP      = False
 
 wayDesc :: Way -> String
+wayDesc (WayCustom xs) = xs
 wayDesc WayThreaded = "Threaded"
 wayDesc WayDebug    = "Debug"
 wayDesc WayDyn      = "Dynamic"
@@ -1060,6 +1067,7 @@ wayDesc WayNDP      = "Nested data parallelism"
 
 -- Turn these flags on when enabling this way
 wayGeneralFlags :: Platform -> Way -> [GeneralFlag]
+wayGeneralFlags _ WayCustom   = []
 wayGeneralFlags _ WayThreaded = []
 wayGeneralFlags _ WayDebug    = []
 wayGeneralFlags _ WayDyn      = [Opt_PIC]
@@ -1071,6 +1079,7 @@ wayGeneralFlags _ WayNDP      = []
 
 -- Turn these flags off when enabling this way
 wayUnsetGeneralFlags :: Platform -> Way -> [GeneralFlag]
+wayUnsetGeneralFlags _ (WayCustom {}) = []
 wayUnsetGeneralFlags _ WayThreaded = []
 wayUnsetGeneralFlags _ WayDebug    = []
 wayUnsetGeneralFlags _ WayDyn      = [-- There's no point splitting objects
@@ -1085,6 +1094,7 @@ wayUnsetGeneralFlags _ WayGran     = []
 wayUnsetGeneralFlags _ WayNDP      = []
 
 wayExtras :: Platform -> Way -> DynFlags -> DynFlags
+wayExtras _ (WayCustom {}) dflags = dflags
 wayExtras _ WayThreaded dflags = dflags
 wayExtras _ WayDebug    dflags = dflags
 wayExtras _ WayDyn      dflags = dflags
@@ -1096,6 +1106,7 @@ wayExtras _ WayNDP      dflags = setExtensionFlag' Opt_ParallelArrays
                                $ setGeneralFlag' Opt_Vectorise dflags
 
 wayOptc :: Platform -> Way -> [String]
+wayOptc _ (WayCustom {}) = []
 wayOptc platform WayThreaded = case platformOS platform of
                                OSOpenBSD -> ["-pthread"]
                                OSNetBSD  -> ["-pthread"]
@@ -1109,6 +1120,7 @@ wayOptc _ WayGran       = ["-DGRAN"]
 wayOptc _ WayNDP        = []
 
 wayOptl :: Platform -> Way -> [String]
+wayOptl _ (WayCustom {}) = []
 wayOptl platform WayThreaded =
         case platformOS platform of
         -- FreeBSD's default threading library is the KSE-based M:N libpthread,
@@ -1131,6 +1143,7 @@ wayOptl _ WayGran       = []
 wayOptl _ WayNDP        = []
 
 wayOptP :: Platform -> Way -> [String]
+wayOptP _ (WayCustom {}) = []
 wayOptP _ WayThreaded = []
 wayOptP _ WayDebug    = []
 wayOptP _ WayDyn      = []

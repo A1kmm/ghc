@@ -516,7 +516,11 @@ findAndReadIface doc_str mod hi_boot_file
 
        -- Check for GHC.Prim, and return its static interface
        if mod == gHC_PRIM
-           then return (Succeeded (ghcPrimIface,
+         then do
+             dflags <- getDynFlags
+             let iface = fromMaybe ghcPrimIface
+                             (sOverridePrimIface (settings dflags))
+             return (Succeeded (iface,
                                    "<built in interface for GHC.Prim>"))
            else do
                dflags <- getDynFlags

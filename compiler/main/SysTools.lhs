@@ -342,7 +342,8 @@ initSysTools mbMinusB
                     sOpt_windres = [],
                     sOpt_lo      = [],
                     sOpt_lc      = [],
-                    sPlatformConstants = platformConstants
+                    sPlatformConstants = platformConstants,
+                    sOverridePrimIface = Nothing
              }
 \end{code}
 
